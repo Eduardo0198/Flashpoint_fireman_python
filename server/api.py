@@ -18,6 +18,3 @@ def new_game():
     global game
     game = FlashPoint()
     return jsonify(game.to_dict())
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
