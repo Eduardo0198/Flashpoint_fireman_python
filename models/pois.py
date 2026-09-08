@@ -13,8 +13,10 @@ POI_POSICIONES = [
     (5,0), (5,1), (5,2), (5,3), (5,4), (5,5), (5,6), (5,7),
 ]
 
+POIS_INICIALES = [(2, 4), (5, 1), (5, 8)]
+
 def crear_matriz_pois():
     matrix = np.zeros((ROWS_POIS, COLS_POIS), dtype=int)
-    for fila, columna in POI_POSICIONES:
-        matrix[fila, columna] = 2
+    for fila, columna in POIS_INICIALES:
+        matrix[fila - 1, columna - 1] = 2
     return matrix
