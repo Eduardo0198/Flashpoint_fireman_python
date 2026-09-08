@@ -1,6 +1,5 @@
 import numpy as np
 import random
-import random
 from models.mapa import PARED, PUERTA_CERRADA, PUERTA_ABIERTA, DANO_MAXIMO
 
 
@@ -48,12 +47,13 @@ def _quitar_puerta(paredes_verticales, paredes_horizontales, r1, c1, r2, c2):
 
 def explosion(r, c, matrix, paredes_verticales, paredes_horizontales, danos_verticales, danos_horizontales):
     direcciones = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    dano_total = 0
     for dr, dc in direcciones:
         fr, fc = r, c
         while True:
             nr, nc = r + dr, c + dc
             if not (0 <= nr < ROWS_FUEGO and 0 <= nc < COLS_FUEGO):
-                break  # fuera del tablero, no hay nada que hacer en esta dirección
+                break
             
             borde = _valor_borde(paredes_verticales, paredes_horizontales, fr, fc, nr, nc)
             if borde == PARED:
@@ -64,8 +64,7 @@ def explosion(r, c, matrix, paredes_verticales, paredes_horizontales, danos_vert
                 _quitar_puerta(paredes_verticales, paredes_horizontales, fr, fc, nr, nc)
                 break
             if matrix[nr, nc] == 2:
-                fr, fc = nr, nc  # sigue la onda de choque por esta celda en fuego
-                continue
+                fr, fc = nr, nc
             
             if matrix[nr, nc] == 1:
                 matrix[nr, nc] = 2
