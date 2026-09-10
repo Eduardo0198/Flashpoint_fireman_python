@@ -7,6 +7,7 @@ from models.pois import SIN_POI, POI_SIN_REVELAR, VICTIMA_REVELADA, PROB_VICTIMA
 
 class Bombero(Agent):
     def __init__(self, model, fila, columna, estrategia="cercano"):
+        # Inicializacion de variables y del modelo
         super().__init__(model)
         self.fila = fila
         self.columna = columna
@@ -16,6 +17,7 @@ class Bombero(Agent):
         self.rescates = 0
         self.celdas_visitadas = 1
         self.paredes_rotas = 0
+    # Checa las paredes que se encuentran cerca
     def _valor_borde(self, r1, c1, r2, c2):
         pv, ph = self.model.paredes_verticales, self.model.paredes_horizontales
         if r1 == r2 and abs(c1 - c2) == 1:
@@ -23,7 +25,7 @@ class Bombero(Agent):
         if c1 == c2 and abs(r1 - r2) == 1:
             return ph[max(r1, r2), c1]
         return PARED
-
+    #Inicializamos la matriz de las paredes, puertas y el daño acumulado
     def _dano_borde(self, r1, c1, r2, c2):
         dv, dh = self.model.danos_verticales, self.model.danos_horizontales
         if r1 == r2 and abs(c1 - c2) == 1:
@@ -32,6 +34,7 @@ class Bombero(Agent):
             return dh[max(r1, r2), c1]
         return 0
 
+    
     def _es_puerta_cerrada(self, r1, c1, r2, c2):
         return self._valor_borde(r1, c1, r2, c2) == PUERTA_CERRADA
 
@@ -105,16 +108,34 @@ class Bombero(Agent):
     def celda_es_borde(self, r, c):
         alto, ancho = self.model.height, self.model.width
         return r == 0 or c == 0 or r == alto - 1 or c == ancho - 1
+    
+    def _candidatos_objetivo(self, tipos):
+        candidatos = []
+        if "poi" in tipos:
+            filas, columnas = np.where(
+                (self.model.pois == POI_SIN_REVELAR) | (self.model.pois == VICTIMA_REVELADA)
+            )
+            candidatos += [("poi", (int(r), int(c))) for r, c in zip(filas, columnas)]
+        if "fuego" in tipos:
+            filas, columnas = np.where(self.model.fuego == 2)
+            candidatos += [("fuego", (int(r), int(c))) for r, c in zip(filas, columnas)]
+        return candidatos
 
-    # ------------------------------------------------------------------
-    # Encontrar objetivo (con fallback de romper pared si no hay camino libre)
-    # ------------------------------------------------------------------
+    def _objetivo_mas_cercano(self, candidatos):
+        inicio = (self.fila, self.columna)
+        cola = []
+        for idx, (tipo, celda) in enumerate(candidatos):
+            prioridad = self._heuristica(celda, inicio)
+            heapq.heappush(cola, (prioridad, idx, tipo, celda))
+
+        while cola:
+            _, _, tipo, celda = heapq.heappop(cola)
+            camino = self.a_estrella(inicio, lambda r, c, meta=celda: (r, c) == meta)
+            if camino:
+                return tipo, camino
+
+        return None, None
     def _pared_hacia_objetivo(self, r_obj, c_obj):
-        """
-        Si no hay camino libre, elige cuál de las paredes intactas alrededor del
-        bombero conviene más romper: la que más reduce la distancia al objetivo.
-        Regresa (vecino_bloqueado) o None si no hay ninguna pared que romper (borde del mapa).
-        """
         alto, ancho = self.model.height, self.model.width
         mejor = None
         mejor_dist = None
@@ -137,26 +158,25 @@ class Bombero(Agent):
             camino = self.a_estrella(inicio, self.celda_es_borde)
             if camino:
                 return ("salir", camino)
-            objetivo_mas_cercano = (0, 0)  # cualquier borde sirve; usamos la esquina como referencia de dirección
+            objetivo_mas_cercano = (0, 0)
             return ("romper_hacia_salir", objetivo_mas_cercano)
+        
+        if self.estrategia == "apagafuegos":
+            grupos = [["fuego"], ["poi"]]
+        else:
+            grupos = [["poi", "fuego"]]
 
-        def hay_poi(r, c):
-            return self.model.pois[r, c] in (POI_SIN_REVELAR, VICTIMA_REVELADA)
-
-        def hay_fuego(r, c):
-            return self.model.fuego[r, c] == 2
+        for tipos in grupos:
+            candidatos = self._candidatos_objetivo(tipos)
+            if not candidatos:
+                continue
+            tipo, camino = self._objetivo_mas_cercano(candidatos)
+            if camino:
+                return (tipo, camino)
 
         objetivos = ["fuego", "poi"] if self.estrategia == "apagafuegos" else ["poi", "fuego"]
         matrices = {"poi": self.model.pois, "fuego": self.model.fuego}
 
-        for tipo in objetivos:
-            condicion = hay_poi if tipo == "poi" else hay_fuego
-            camino = self.a_estrella(inicio, condicion)
-            if camino:
-                return (tipo, camino)
-
-        # No hay camino libre a ningún objetivo conocido: buscar la celda objetivo más
-        # cercana en línea recta (ignorando paredes) y romper la pared que apunte hacia ella.
         def _es_objetivo(tipo, valor):
             if tipo == "poi":
                 return valor in (POI_SIN_REVELAR, VICTIMA_REVELADA)
@@ -233,7 +253,6 @@ class Bombero(Agent):
                 if tipo == "poi":
                     valor_actual = self.model.pois[self.fila, self.columna]
                     if valor_actual == POI_SIN_REVELAR:
-                        # Revelar (0 AP): víctima o falsa alarma.
                         if self.model.random.random() < PROB_VICTIMA:
                             self.model.pois[self.fila, self.columna] = VICTIMA_REVELADA
                             self.cargando_victima = True
@@ -244,7 +263,7 @@ class Bombero(Agent):
                         self.model.pois[self.fila, self.columna] = SIN_POI
                         self.cargando_victima = True
                         continue
-                    continue  # ya no había nada (otro bombero se adelantó)
+                    continue
                 if tipo == "fuego":
                     if self.ap < 2:
                         break
